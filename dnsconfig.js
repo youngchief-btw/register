@@ -11,12 +11,13 @@ function getDomainsList(filesPath) {
     return result;
 }
 
-var domains = getDomainsList("./domains");
+var allDomains = getDomainsList("./domains");
+
 var commit = [];
 
-for (var subdomain in domains) {
-    var subdomainName = domains[subdomain].name;
-    var domainData = domains[subdomain].data;
+for (var subdomain in allDomains) {
+    var subdomainName = allDomains[subdomain].name;
+    var domainData = allDomains[subdomain].data;
     var proxyState = domainData.proxied ? { cloudflare_proxy: "on" } : { cloudflare_proxy: "off" };
 
     // Handle A records
@@ -43,11 +44,28 @@ for (var subdomain in domains) {
         }
     }
 
+    // Handle NS records
+    if (domainData.target.NS) {
+        for (var ns in domainData.target.NS.value) {
+            commit.push(NS(domainData.target.NS.name, domainData.target.NS.value[ns] + "."));
+        }
+    }
+
     // Handle TXT records
     if (domainData.target.TXT) {
-        commit.push(TXT(domainData.target.TXT.name === "@" ? subdomainName : domainData.target.TXT.name + "." + subdomainName, domainData.target.TXT.value));
+        if (Array.isArray(domainData.target.TXT)) {
+            for (var txt in domainData.target.TXT) {
+                var txtRecord = domainData.target.TXT[txt];
+                commit.push(TXT(txtRecord.name, txtRecord.value));
+            }
+        } else {
+            commit.push(TXT(domainData.target.TXT.name === "@" ? subdomainName : domainData.target.TXT.name + "." + subdomainName, domainData.target.TXT.value));
+        }
     }
 }
+
+// *.mx.is-a-good.dev
+commit.push(IGNORE("*", "MX", "*"));
 
 // Commit all DNS records
 D("is-a-good.dev", NewRegistrar("none"), DnsProvider(NewDnsProvider("cloudflare")), commit);
